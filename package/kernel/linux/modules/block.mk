@@ -25,7 +25,7 @@ $(eval $(call KernelPackage,aoe))
 define KernelPackage/ata-core
   SUBMENU:=$(BLOCK_MENU)
   TITLE:=Serial and Parallel ATA support
-  DEPENDS:=@PCI_SUPPORT +kmod-scsi-core
+  DEPENDS:=@PCI_SUPPORT +kmod-scsi-core @!TARGET_ubicom32
   KCONFIG:=CONFIG_ATA
   FILES:=$(LINUX_DIR)/drivers/ata/libata.ko
 endef

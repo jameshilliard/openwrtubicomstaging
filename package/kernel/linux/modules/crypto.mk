@@ -176,7 +176,7 @@ $(eval $(call KernelPackage,crypto-hw-geode))
 
 define KernelPackage/crypto-hw-hifn-795x
   TITLE:=HIFN 795x crypto accelerator
-  DEPENDS:=+kmod-random-core +kmod-crypto-manager
+  DEPENDS:=+kmod-random-core +kmod-crypto-manager @!TARGET_ubicom32
   KCONFIG:= \
 	CONFIG_CRYPTO_DEV_HIFN_795X \
 	CONFIG_CRYPTO_DEV_HIFN_795X_RNG=y

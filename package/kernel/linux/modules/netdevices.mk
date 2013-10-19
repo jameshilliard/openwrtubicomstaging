@@ -486,7 +486,7 @@ $(eval $(call KernelPackage,pcnet32))
 define KernelPackage/tg3
   TITLE:=Broadcom Tigon3 Gigabit Ethernet
   KCONFIG:=CONFIG_TIGON3
-  DEPENDS:=+!TARGET_brcm47xx:kmod-libphy +!LINUX_3_3:kmod-hwmon-core +(LINUX_3_8||LINUX_3_9||LINUX_3_10):kmod-ptp
+  DEPENDS:=+!TARGET_brcm47xx:kmod-libphy +!LINUX_3_3:kmod-hwmon-core +(LINUX_3_8||LINUX_3_9||LINUX_3_10):kmod-ptp @!TARGET_ubicom32
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/broadcom/tg3.ko
   AUTOLOAD:=$(call AutoLoad,19,tg3,1)
