@@ -1,5 +1,6 @@
 config GCC_VERSION_4_4_7
 	default y if (!TOOLCHAINOPTS && avr32)
+	default y if ubicom32
 	bool
 
 config GCC_VERSION_4_6_LINARO
