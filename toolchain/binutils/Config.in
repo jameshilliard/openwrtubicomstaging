@@ -43,6 +43,5 @@ config BINUTILS_VERSION
 	default "2.22"            if BINUTILS_VERSION_2_22
 	default "2.23.1"	  if BINUTILS_VERSION_2_23_1
 	default "linaro"          if BINUTILS_VERSION_LINARO
-	default "2.20.1"          if ubicom32 
-	default "2.20.1"          if avr32
+	default "2.20.1"          if (avr32 || ubicom32)
 	default "2.22"
