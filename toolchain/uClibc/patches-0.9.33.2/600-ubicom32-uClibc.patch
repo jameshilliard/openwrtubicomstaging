@@ -1,18 +1,20 @@
 --- a/Rules.mak
 +++ b/Rules.mak
-@@ -524,6 +524,17 @@ ifeq ($(TARGET_ARCH),i960)
+@@ -477,6 +477,19 @@ ifeq ($(TARGET_ARCH),microblaze)
        SYMBOL_PREFIX=_
  endif
  
 +ifeq ($(TARGET_ARCH),ubicom32)
-+	OPTIMIZATION+=-fstrict-aliasing
-+	CPU_CFLAGS-$(CONFIG_UBICOM32_V3)+=-march=ubicom32v3
-+	CPU_CFLAGS-$(CONFIG_UBICOM32_V4)+=-march=ubicom32v4
 +ifeq ($(UCLIBC_FORMAT_FDPIC_ELF),y)
-+	CPU_CFLAGS-y:=-mfdpic
-+	CPU_LDFLAGS-y += -Wl,-melf32ubicom32fdpic
++	CPU_CFLAGS-y	:= -mfdpic
++	CPU_LDFLAGS-y	+= -Wl,-melf32ubicom32fdpic
 +endif
-+
++	OPTIMIZATION+=-fstrict-aliasing
++# We based the ISA version choice on the ISA selection coming from
++# the kernel, so these are not CONFIG_UC_XXXX.
++	CPU_CFLAGS-$(CONFIG_UBICOM32_V3)	+= -march=ubicom32v3 -DUBICOM32_ARCH_VERSION=3
++	CPU_CFLAGS-$(CONFIG_UBICOM32_V4)	+= -march=ubicom32v4 -DUBICOM32_ARCH_VERSION=4
++	CPU_CFLAGS-$(CONFIG_UBICOM32_V5)	+= -march=ubicom32v5 -DUBICOM32_ARCH_VERSION=5
 +endif
 +
  ifeq ($(TARGET_ARCH),v850)
@@ -30,7 +32,7 @@
  config TARGET_v850
  	bool "v850 (BROKEN)"
  
-@@ -206,6 +209,10 @@ if TARGET_sparc
+@@ -203,6 +206,10 @@ if TARGET_sparc
  source "extra/Configs/Config.sparc"
  endif
  
@@ -43,7 +45,34 @@
  endif
 --- a/extra/Configs/Config.in.arch
 +++ b/extra/Configs/Config.in.arch
-@@ -152,7 +152,7 @@ config UCLIBC_HAS_SOFT_FLOAT
+@@ -7,7 +7,6 @@
+ #
+ # Binary format
+ #
+-if !ARCH_USE_MMU
+ choice
+ 	prompt "Target File Format"
+ config UCLIBC_FORMAT_ELF
+@@ -15,7 +14,6 @@ config UCLIBC_FORMAT_ELF
+ 	depends on ARCH_USE_MMU
+ config UCLIBC_FORMAT_FDPIC_ELF
+ 	bool "FDPIC ELF"
+-	depends on !ARCH_USE_MMU
+ 	select DOPIC
+ config UCLIBC_FORMAT_FLAT
+ 	bool "STATIC FLAT"
+@@ -33,10 +31,6 @@ config UCLIBC_FORMAT_SHARED_FLAT
+ 	  Pick this one if you are using uClinux and wish to build
+ 	  uClibc as a flat-format shared library.
+ endchoice
+-endif
+-if ARCH_USE_MMU
+-comment "Using ELF file format"
+-endif
+ 
+ config UCLIBC_SHARED_FLAT_ID
+ 	int "Shared library ID"
+@@ -149,7 +143,7 @@ config UCLIBC_HAS_SOFT_FLOAT
  config DO_C99_MATH
  	bool "Enable full C99 math library support"
  	depends on UCLIBC_HAS_FLOATS
@@ -54,7 +83,7 @@
  	  math library features, then answer Y.  If you leave this set to
 --- /dev/null
 +++ b/extra/Configs/Config.ubicom32
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,50 @@
 +#
 +# For a description of the syntax of this configuration file,
 +# see extra/config/Kconfig-language.txt
@@ -68,7 +97,6 @@
 +	bool
 +	default y
 +	select ARCH_BIG_ENDIAN
-+	select ARCH_HAS_NO_MMU
 +
 +choice
 +	prompt "Target Processor Architecture"
@@ -89,9 +117,16 @@
 +
 +config CONFIG_UC_UBICOM32_V3
 +	bool "ISA v3"
++	select ARCH_HAS_NO_MMU
 +
 +config CONFIG_UC_UBICOM32_V4
 +	bool "ISA v4"
++	select ARCH_HAS_NO_MMU
++
++config CONFIG_UC_UBICOM32_V5
++	bool "ISA v5"
++	select ARCH_HAS_MMU
++	select ARCH_USE_MMU if ARCH_HAS_MMU
 +endchoice
 +
 +config ARCH_CFLAGS
@@ -101,7 +136,7 @@
 +	string
 --- a/include/elf.h
 +++ b/include/elf.h
-@@ -338,6 +338,8 @@ typedef struct
+@@ -337,6 +337,8 @@ typedef struct
  
  #define EM_XSTORMY16		0xad45
  
@@ -110,65 +145,64 @@
  /* FRV magic number - no EABI available??.  */
  #define EM_CYGNUS_FRV	0x5441
  
-@@ -3141,6 +3143,55 @@ typedef Elf32_Addr Elf32_Conflict;
- #define R_MICROBLAZE_COPY 21  /* runtime copy */
- #define R_MICROBLAZE_NUM 22
+@@ -3063,6 +3065,54 @@ typedef Elf32_Addr Elf32_Conflict;
+ /* Keep this the last entry.  */
+ #define R_XTENSA_NUM		50
  
 +/* Ubicom32 ELF relocation types */
-+#define R_UBICOM32_NONE               0
-+#define R_UBICOM32_16                         1
-+#define R_UBICOM32_32                         2
-+#define R_UBICOM32_LO16               3
-+#define R_UBICOM32_HI16               4
-+#define R_UBICOM32_21_PCREL           5
-+#define R_UBICOM32_24_PCREL           6
-+#define R_UBICOM32_HI24               7
-+#define R_UBICOM32_LO7_S              8
-+#define R_UBICOM32_LO7_2_S            9
-+#define R_UBICOM32_LO7_4_S            10
-+#define R_UBICOM32_LO7_D              11
-+#define R_UBICOM32_LO7_2_D            12
-+#define R_UBICOM32_LO7_4_D            13
-+#define R_UBICOM32_32_HARVARD                 14
-+#define R_UBICOM32_LO7_CALLI          15
-+#define R_UBICOM32_LO16_CALLI                 16
-+#define R_UBICOM32_GOT_HI24           17
-+#define R_UBICOM32_GOT_LO7_S          18
-+#define R_UBICOM32_GOT_LO7_2_S                19
-+#define R_UBICOM32_GOT_LO7_4_S                20
-+#define R_UBICOM32_GOT_LO7_D          21
-+#define R_UBICOM32_GOT_LO7_2_D                22
-+#define R_UBICOM32_GOT_LO7_4_D                23
-+#define R_UBICOM32_FUNCDESC_GOT_HI24  24
-+#define R_UBICOM32_FUNCDESC_GOT_LO7_S 25
++#define R_UBICOM32_NONE 		0
++#define R_UBICOM32_16 			1
++#define R_UBICOM32_32 			2
++#define R_UBICOM32_LO16 		3
++#define R_UBICOM32_HI16 		4
++#define R_UBICOM32_21_PCREL 		5
++#define R_UBICOM32_24_PCREL 		6
++#define R_UBICOM32_HI24 		7
++#define R_UBICOM32_LO7_S 		8
++#define R_UBICOM32_LO7_2_S 		9
++#define R_UBICOM32_LO7_4_S 		10
++#define R_UBICOM32_LO7_D 		11
++#define R_UBICOM32_LO7_2_D 		12
++#define R_UBICOM32_LO7_4_D 		13
++#define R_UBICOM32_32_HARVARD 		14
++#define R_UBICOM32_LO7_CALLI 		15
++#define R_UBICOM32_LO16_CALLI 		16
++#define R_UBICOM32_GOT_HI24		17
++#define R_UBICOM32_GOT_LO7_S		18
++#define R_UBICOM32_GOT_LO7_2_S		19
++#define R_UBICOM32_GOT_LO7_4_S		20
++#define R_UBICOM32_GOT_LO7_D		21
++#define R_UBICOM32_GOT_LO7_2_D		22
++#define R_UBICOM32_GOT_LO7_4_D		23
++#define R_UBICOM32_FUNCDESC_GOT_HI24	24
++#define R_UBICOM32_FUNCDESC_GOT_LO7_S	25
 +#define R_UBICOM32_FUNCDESC_GOT_LO7_2_S 26
 +#define R_UBICOM32_FUNCDESC_GOT_LO7_4_S 27
-+#define R_UBICOM32_FUNCDESC_GOT_LO7_D 28
++#define R_UBICOM32_FUNCDESC_GOT_LO7_D	28
 +#define R_UBICOM32_FUNCDESC_GOT_LO7_2_D 29
 +#define R_UBICOM32_FUNCDESC_GOT_LO7_4_D 30
-+#define R_UBICOM32_GOT_LO7_CALLI      31
++#define R_UBICOM32_GOT_LO7_CALLI	31
 +#define R_UBICOM32_FUNCDESC_GOT_LO7_CALLI 32
-+#define R_UBICOM32_FUNCDESC_VALUE     33
-+#define R_UBICOM32_FUNCDESC           34
-+#define R_UBICOM32_GOTOFFSET_LO               35
-+#define R_UBICOM32_GOTOFFSET_HI               36
++#define R_UBICOM32_FUNCDESC_VALUE	33
++#define R_UBICOM32_FUNCDESC		34
++#define R_UBICOM32_GOTOFFSET_LO		35
++#define R_UBICOM32_GOTOFFSET_HI		36
 +#define R_UBICOM32_FUNCDESC_GOTOFFSET_LO 37
 +#define R_UBICOM32_FUNCDESC_GOTOFFSET_HI 38
-+#define R_UBICOM32_GNU_VTINHERIT      200
-+#define R_UBICOM32_GNU_VTENTRY                201
++#define R_UBICOM32_GNU_VTINHERIT	200
++#define R_UBICOM32_GNU_VTENTRY		201
 +
 +/* Ubicom32 Flags. */
-+#define EF_UBICOM32_V3                0x00000001      /* -fmarch=ubicom32v3 */
-+#define EF_UBICOM32_V4                0x00000002      /* -fmarch=ubicom32v4 */
-+#define EF_UBICOM32_PIC               0x80000000      /* -fpic */
-+#define EF_UBICOM32_FDPIC             0x40000000      /* -mfdpic */
++#define EF_UBICOM32_VMASK	0x0000ffff	/* version mask */
++#define EF_UBICOM32_PIC		0x80000000      /* -fpic */
++#define EF_UBICOM32_FDPIC	0x40000000      /* -mfdpic */
 +
  #ifdef	__cplusplus
  }
  #endif
 --- a/include/features.h
 +++ b/include/features.h
-@@ -448,4 +448,10 @@ uClibc was built without large file supp
+@@ -445,4 +445,10 @@ uClibc was built without large file supp
  # include <libc-internal.h>
  #endif
  
@@ -179,6 +213,37 @@
 +#define libm_hidden_proto(name, attrs...)
 +#endif
  #endif	/* features.h  */
+--- a/ldso/ldso/dl-startup.c
++++ b/ldso/ldso/dl-startup.c
+@@ -164,10 +164,13 @@ DL_START(unsigned long args)
+ 		aux_dat += 2;
+ 	}
+ 
++#if !defined __FDPIC__
+ 	/* locate the ELF header.   We need this done as soon as possible
+ 	 * (esp since SEND_STDERR() needs this on some platforms... */
+ 	if (!auxvt[AT_BASE].a_un.a_val)
+ 		auxvt[AT_BASE].a_un.a_val = elf_machine_load_address();
++#endif
++
+ 	DL_INIT_LOADADDR_BOOT(load_addr, auxvt[AT_BASE].a_un.a_val);
+ 	header = (ElfW(Ehdr) *) auxvt[AT_BASE].a_un.a_val;
+ 
+--- a/ldso/ldso/ldso.c
++++ b/ldso/ldso/ldso.c
+@@ -325,10 +325,12 @@ void _dl_get_ready_to_run(struct elf_res
+ 		_dl_progname = argv[0];
+ 	}
+ 
++#if 0 // blackfin does this, we do to avoid die during reloc
+ 	if (_start == (void *) auxvt[AT_ENTRY].a_un.a_val) {
+ 		_dl_dprintf(_dl_debug_file, "Standalone execution is not supported yet\n");
+ 		_dl_exit(1);
+ 	}
++#endif
+ 
+ 	/* Start to build the tables of the modules that are required for
+ 	 * this beast to run.  We start with the basic executable, and then
 --- /dev/null
 +++ b/ldso/ldso/ubicom32/dl-debug.h
 @@ -0,0 +1,72 @@
@@ -841,7 +906,7 @@
 +#endif
 --- /dev/null
 +++ b/ldso/ldso/ubicom32/dl-startup.h
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,235 @@
 +/*
 +  Copyright (C) 2009 Ubicom, Inc.
 +  Copyright (C) 2003 Red Hat, Inc.
@@ -913,6 +978,9 @@
 +	 */
 +	"	call	a5, .Lcall					\n\t"
 +	".Lcall:							\n\t"
++	"	pdec	sp, 256(sp); reserve 64 words for dummy tls block on stack 		\n\t"
++	"	lea.4	12(sp), 256(sp) ; store the argv ptr into the PRENIT slot in tls	\n\t"
++	"	move.4	d14, sp ; Set up tls pointer to point to dummy tls block		\n\t"
 +	/*
 +	 * Reserve and Push inputs to stack.
 +	 * 32 byte  stack layout as follows
@@ -988,7 +1056,7 @@
 +	"	move.4	d2, 4(sp)	; d2 = interp_map_addr		\n\t"
 +	"	move.4	d3, 8(sp)	; d3 = dynamic_addr		\n\t"
 +	"	lea.1	d4, 16(sp)	; d4 = &dl_main_funcdesc	\n\t"
-+	"	lea.1	d5, 32(sp)	; d5 = original stack ptr (args)\n\t"
++	"	lea.4	d5, 288(sp)	; d5 = original stack ptr (args)\n\t"
 +	"	call	a5, _dl_start					\n\t"
 +
 +	/*
@@ -1011,7 +1079,7 @@
 +	 */
 +	"	move.4	a5, 16(sp) ; a5 = dl_main_funcdesc.entry_point	\n\t"
 +	"	move.4	a0, 20(sp) ; a0 = dl_main_funcdesc.got_value	\n\t"
-+	"	lea.1	sp, 32(sp); restore original stack ptr (args)	\n\t"
++	"	lea.4	sp, 288(sp); restore original stack ptr (args)	\n\t"
 +	"	calli	a5, 0(a5)					\n\t"
 +	"	bkpt	-1; should never get here			\n\t"
 +	"	.size	_start, . - _start				\n\t"
@@ -1285,7 +1353,7 @@
 +#endif
 --- /dev/null
 +++ b/ldso/ldso/ubicom32/dl-sysdep.h
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,258 @@
 +     /* Copyright (C) 2003, 2004 Red Hat, Inc.
 +	Contributed by Alexandre Oliva <aoliva@redhat.com>
 +	Based on ../i386/dl-sysdep.h
@@ -1324,6 +1392,9 @@
 +
 +#define HAVE_DL_INLINES_H
 +
++/* Need bootstrap relocations */
++#define ARCH_NEEDS_BOOTSTRAP_RELOCS
++
 +/*
 + * Initialization sequence for a GOT.  Copy the resolver function
 + * descriptor and the pointer to the elf_resolve/link_map data
@@ -1354,14 +1425,25 @@
 +};
 +
 +extern int _dl_linux_resolve(void) __attribute__((__visibility__("hidden")));
-+extern struct funcdesc_value volatile *__attribute__((__visibility__("hidden")))
-+	_dl_linux_resolver (struct elf_resolve *tpnt, int reloc_entry);
++extern struct funcdesc_value volatile *
++	_dl_linux_resolver (struct elf_resolve *tpnt, int reloc_entry)
++	__attribute__((__visibility__("hidden")));
 +
-+/* 4KiB page alignment.  Should perhaps be made dynamic using
-+   getpagesize(), based on AT_PAGESZ from auxvt?  */
++/*
++ * TODO: At some point try and make this dynamic based on getpagesize().
++ * For now, we need to set the page size based on the actual kernel page
++ * size that is in use.  This is 4K on (IP3K, IP5K and IP7K) and 16K on
++ * IP8K.
++ */
++#if defined(CONFIG_UC_UBICOM32_V5)
++#define PAGE_ALIGN 0xffffc000
++#define ADDR_ALIGN 0x3fff
++#define OFFS_ALIGN 0x7fffc000
++#else
 +#define PAGE_ALIGN 0xfffff000
 +#define ADDR_ALIGN 0xfff
 +#define OFFS_ALIGN 0x7ffff000
++#endif
 +
 +struct funcdesc_ht;
 +
@@ -1380,9 +1462,10 @@
 +	"	move.4	%0, (%3, %0)			\n\t"		\
 +	"	sub.4	%1, a3, %0;			\n\t"		\
 +	"	add.4	%1, %1, %2;			\n\t"		\
-+	: "=&d" (__scratch), "=&d" (__p)				\
-+	: "d" (__s), "a" (dl_boot_got_pointer)				\
-+	: "a3", "a4", "d15");						\
++		: "=&d" (__scratch), "=&d" (__p)			\
++		: "d" (__s), "a" (dl_boot_got_pointer)			\
++		: "a3", "cc"						\
++	);								\
 +	SEND_STDERR (__p);						\
 +	{	int __t;						\
 +		for (__t = 0; __t < 0x100000; __t++) __asm__ __volatile__ (""); } \
@@ -1397,7 +1480,7 @@
 +  ((void(*)(void)) _dl_funcdesc_for ((void*)(ADDR), (LOADADDR).got_value))
 +
 +#define _dl_stabilize_funcdesc(val) \
-+  ({ __asm__ ("" : "+m" (*(val))); (val); })
++  ({ __asm__ ("" : "+m" (*(val)) :: "memory"); (val); })
 +
 +#define DL_CALL_FUNC_AT_ADDR(ADDR, LOADADDR, SIGNATURE, ...) \
 +  ({ struct funcdesc_value fd = { (void*)(ADDR), (LOADADDR).got_value }; \
@@ -1531,7 +1614,7 @@
 +}
 --- /dev/null
 +++ b/ldso/ldso/ubicom32/elfinterp.c
-@@ -0,0 +1,366 @@
+@@ -0,0 +1,374 @@
 +/* Blackfin ELF shared library loader suppport
 +   Copyright (C) 2003, 2004 Red Hat, Inc.
 +   Contributed by Alexandre Oliva <aoliva@redhat.com>
@@ -1570,9 +1653,17 @@
 +   Programmers guide: Ansi C and Programming Support Tools", which did
 +   a more than adequate job of explaining everything required to get this
 +   working. */
-+extern int _dl_ubicom32_resolve_pending(void) __attribute__((__visibility__("hidden")));
 +
-+struct funcdesc_value volatile *__attribute__((__visibility__("hidden")))
++/*
++ * _dl_ubicom32_resolve_pending is actually a function, it is used to
++ * deal with multiple threads resolving the same function at the same
++ * time.  While a resolution is being done the _dl_linux_resolve ptr in
++ * the plt is replaced with _dl_ubicom32_resolve_pending The chances that
++ * it ever gets called probably 1 in a million.
++ */
++extern int _dl_ubicom32_resolve_pending __attribute__((__visibility__("hidden")));
++
++ __attribute__((__visibility__("hidden"))) struct funcdesc_value volatile *
 +_dl_linux_resolver (struct elf_resolve *tpnt, int reloc_entry)
 +{
 +	int reloc_type;
@@ -1611,7 +1702,7 @@
 +	if (!new_addr) {
 +		new_addr = _dl_lookup_hash(symname, NULL, NULL, 0, &new_tpnt);
 +		if (!new_addr) {
-+			_dl_dprintf(2, "%s: can't resolve symbol '%s'\n",
++			_dl_dprintf(2, "_dl_linux_resolver: %s: can't resolve symbol '%s'\n",
 +				    _dl_progname, symname);
 +			_dl_exit(1);
 +		}
@@ -1631,7 +1722,7 @@
 +				    got_entry);
 +	}
 +	if (1 || !_dl_debug_nofixups) {
-+		got_entry->entry_point = ((unsigned long *)&_dl_ubicom32_resolve_pending)[0];
++		got_entry->entry_point = ((void *)&_dl_ubicom32_resolve_pending);
 +		got_entry->got_value = funcval.got_value;
 +		got_entry->entry_point = funcval.entry_point;
 +	}
@@ -1641,7 +1732,7 @@
 +	 * the update. This has the effect of putting all other requests in a
 +	 * holding pattern until the resolution is completed.
 +	 */
-+	got_entry->entry_point = ((unsigned long *)&_dl_ubicom32_resolve_pending)[0];
++	got_entry->entry_point = ((void*)&_dl_ubicom32_resolve_pending);
 +	got_entry->got_value = funcval.got_value;
 +	got_entry->entry_point = funcval.entry_point;
 +#endif
@@ -1739,8 +1830,8 @@
 +		 */
 +
 +		if (!symbol_addr && ELF_ST_BIND(symtab[symtab_index].st_info) != STB_WEAK) {
-+			_dl_dprintf (2, "%s: can't resolve symbol '%s'\n",
-+				     _dl_progname, strtab + symtab[symtab_index].st_name);
++			_dl_dprintf (2, "_dl_do_reloc: %s: can't resolve symbol '%s'\n",
++				     _dl_progname, symname);
 +			_dl_exit (1);
 +		}
 +	}
@@ -2152,27 +2243,25 @@
 +		n -= (4 - (addr_t)dest) & 0x03;
 +		m = n >> 2;
 +		__asm__ volatile (
-+		"	call		%4, 99f			\n\t"	// load %4 with address of 99
-+		"99:	movei		d15, #%%lo(1f-99b)	\n\t"	// load d15 with offset to 1 from 99
-+		"	add.4		%4, %4, d15		\n\t"	// add difference
-+
 +		"	sub.4		d15, #0, %2		\n\t"	// set up for jump table
 +		"	and.4		d15, #(32-1), d15	\n\t"	// d15 = (-m) & (32 - 1)
-+		"	lea.4		%4, (%4,d15)		\n\t"
++		"	lsl.4		d15, d15, #1		\n\t"	// We need 2 instructions per word
++		"	call		%4, .+4			\n\t"
++		"	lea.4		%4, (%4,d15)		\n\t"	// 18 inst from here to 1f
 +
 +		"	bfextu		d15, %0, #2		\n\t"	// d15 = (dest & 3)
 +		"	jmpne.w.f	100f			\n\t"
-+		"	calli		%4, 0(%4)		\n\t"	// 4-byte alignment
++		"	calli		%4, 4*18(%4)		\n\t"	// 4-byte alignment
 +
 +		"100:	cmpi		d15, #2			\n\t"
 +		"	jmpne.s.f	101f			\n\t"
 +		"	move.2		(%0)2++, (%1)2++	\n\t"
-+		"	calli		%4, 0(%4)		\n\t"	// 2-byte alignment
++		"	calli		%4, 4*18(%4)		\n\t"	// 2-byte alignment
 +
 +		"101:	move.1		(%0)1++, (%1)1++	\n\t"
 +		"	jmpgt.s.f	102f			\n\t"	// 3-byte alignment
 +		"	move.2		(%0)2++, (%1)2++	\n\t"	// 1-byte alignment
-+		"102:	calli		%4, 0(%4)		\n\t"
++		"102:	calli		%4, 4*18(%4)		\n\t"
 +
 +		"200:	cmpi		%3, #2			\n\t"
 +		"	jmplt.s.f	201f			\n\t"
@@ -2183,9 +2272,11 @@
 +
 +		"1:	.rept		25			\n\t"
 +		"	movea		(%0)4++, (%1)4++	\n\t"
++		"	nop					\n\t"	// nop to avoid overfilling the write buffer!
 +		"	.endr					\n\t"
 +		"	.rept		7			\n\t"
 +		"	move.4		(%0)4++, (%1)4++	\n\t"
++		"	nop					\n\t"	// nop to avoid overfilling the write buffer!
 +		"	.endr					\n\t"
 +		"	add.4		%2, #-32, %2		\n\t"
 +		"	jmpgt.w.f	1b			\n\t"
@@ -2193,7 +2284,7 @@
 +		"	and.4		%3, #3, %3		\n\t"	// check n
 +		"	jmpne.w.f	200b			\n\t"
 +		"2:						\n\t"
-+			: "+a"(dest), "+a"(src), "+d"(m), "+d"(n), "=a"(aligned_start)
++			: "+a" (dest), "+a" (src), "+d" (m), "+d" (n), "=a" (aligned_start)
 +			:
 +			: "d15", "memory", "cc"
 +		);
@@ -2206,26 +2297,25 @@
 +		n -= (addr_t)dest & 0x01;
 +		m = n >> 1;
 +		__asm__ volatile (
-+		"	call		%4, 99f			\n\t"	// load %4 with address of 99
-+		"99:	movei		d15, #%%lo(1f-99b)	\n\t"	// load d15 with offset to 1 from 99
-+		"	add.4		%4, %4, d15		\n\t"	// add difference
-+
 +		"	sub.4		d15, #0, %2		\n\t"	// set up for jump table
 +		"	and.4		d15, #(32-1), d15	\n\t"	// d15 = (-m) & (32 - 1)
-+		"	lea.4		%4, (%4,d15)		\n\t"
++		"	lsl.4		d15, d15, #1		\n\t"	// We need 2 instructions per word
++		"	call		%4, .+4			\n\t"
++		"	lea.4		%4, (%4,d15)		\n\t"	// 8 inst from here to 1f
 +
 +		"	btst		%0, #0			\n\t"	// check bit 0
 +		"	jmpne.w.f	100f			\n\t"
-+		"	calli		%4, 0(%4)		\n\t"	// 4-byte alignment
++		"	calli		%4, 4*8(%4)		\n\t"	// 4-byte alignment
 +
 +		"100:	move.1		(%0)1++, (%1)1++	\n\t"
-+		"	calli		%4, 0(%4)		\n\t"
++		"	calli		%4, 4*8(%4)		\n\t"
 +
 +		"200:	move.1		(%0)1++, (%1)1++	\n\t"
 +		"	jmpt.w.t	2f			\n\t"
 +
 +		"1:	.rept		32			\n\t"
 +		"	move.2		(%0)2++, (%1)2++	\n\t"
++		"	nop					\n\t"	// nop to avoid overfilling the write buffer!
 +		"	.endr					\n\t"
 +		"	add.4		%2, #-32, %2		\n\t"
 +		"	jmpgt.w.f	1b			\n\t"
@@ -2234,42 +2324,43 @@
 +		"	jmpne.w.f	200b			\n\t"
 +		"2:						\n\t"
 +
-+			: "+a"(dest), "+a"(src), "+d"(m), "+d"(n), "=a"(aligned_start)
++			: "+a" (dest), "+a" (src), "+d" (m), "+d" (n), "=a"(aligned_start)
 +			:
 +			: "d15", "memory", "cc"
 +		);
++
 +		return dest_ret;
 +	}
 +
 +	__asm__ volatile (
-+	"	call		%3, 99f			\n\t"	// load %3 with address of 99
-+	"99:	movei		d15, #%%lo(1f-99b)	\n\t"	// load d15 with offset to 1 from 99
-+	"	add.4		%3, %3, d15		\n\t"	// add difference
-+
 +	"	sub.4		d15, #0, %2		\n\t"
 +	"	jmpeq.w.f	2f			\n\t"
 +	"	and.4		d15, #(16-1), d15	\n\t"	// d15 = (-n) & (16 - 1)
-+	"	lea.4		%3, (%3,d15)		\n\t"
-+	"	calli		%3, 0(%3)		\n\t"
++	"	lsl.4		d15, d15, #1		\n\t"	// We need 2 instructions per word
++	"	call		%3, .+4			\n\t"
++	"	lea.4		%3, (%3,d15)		\n\t"	// 2 inst from here to 1f
++	"	calli		%3, 8(%3)		\n\t"
 +
 +	"1:	.rept		16			\n\t"
 +	"	move.1		(%0)1++, (%1)1++	\n\t"
++	"	nop					\n\t"	// nop to avoid overfilling the write buffer!
 +	"	.endr					\n\t"
 +	"	add.4		%2, #-16, %2		\n\t"
 +	"	jmpgt.w.f	1b			\n\t"
 +	"2:						\n\t"
 +
-+		: "+a"(dest), "+a"(src), "+d"(n), "=a"(aligned_start)
++		: "+a" (dest), "+a" (src), "+d" (n), "=a" (aligned_start)
 +		:
 +		: "d15", "memory", "cc"
 +	);
 +
 +	return dest_ret;
 +}
-+libc_hidden_def(memcpy)
++libc_hidden_weak(memcpy)
++
 --- /dev/null
 +++ b/libc/string/ubicom32/memset.c
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,103 @@
 +/* Copyright (C) 1991, 1997, 2003 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
 +
@@ -2297,34 +2388,32 @@
 +{
 +	void *s_ret = s;
 +	void *aligned_start;
++
 +	if (likely(n > 6)) {
 +		size_t m;
 +		n -= (4 - (addr_t)s) & 0x03;
 +		m = n >> 2;
 +		__asm__ volatile (
-+		"	call		%4, 99f			\n\t"	// load %4 with address of 99
-+		"99:	movei		d15, #%%lo(1f-99b)	\n\t"	// load d15 with offset to 1 from 99
-+		"	add.4		%4, %4, d15		\n\t"	// add difference
-+
 +		"	sub.4		d15, #0, %2		\n\t"	// set up for jump table
 +		"	and.4		d15, #(32-1), d15	\n\t"	// d15 = (-m) & (32 - 1)
 +		"	shmrg.1		%1, %1, %1		\n\t"
 +		"	shmrg.2		%1, %1, %1		\n\t"	// %1 = (c<<24)|(c<<16)|(c<<8)|c
-+		"	lea.4		%4, (%4,d15)		\n\t"
++		"	call		%4, .+4			\n\t"
++		"	lea.4		%4, (%4,d15)		\n\t"	// 18 inst from here to 1f
 +
 +		"	bfextu		d15, %0, #2		\n\t"	// d15 = (s & 3)
 +		"	jmpne.w.f	100f			\n\t"
-+		"	calli		%4, 0(%4)		\n\t"	// 4-byte alignment
++		"	calli		%4, 4*18(%4)		\n\t"	// 4-byte alignment
 +
 +		"100:	cmpi		d15, #2			\n\t"
 +		"	jmpne.s.f	101f			\n\t"
 +		"	move.2		(%0)2++, %1		\n\t"
-+		"	calli		%4, 0(%4)		\n\t"	// 2-byte alignment
++		"	calli		%4, 4*18(%4)		\n\t"	// 2-byte alignment
 +
 +		"101:	move.1		(%0)1++, %1		\n\t"
 +		"	jmpgt.s.f	102f			\n\t"	// 3-byte alignment
 +		"	move.2		(%0)2++, %1		\n\t"	// 1-byte alignment
-+		"102:	calli		%4, 0(%4)		\n\t"
++		"102:	calli		%4, 4*18(%4)		\n\t"
 +
 +		"200:	cmpi		%3, #2			\n\t"
 +		"	jmplt.s.f	201f			\n\t"
@@ -2345,7 +2434,7 @@
 +		"	and.4		%3, #3, %3		\n\t"	// test bit 1 of n
 +		"	jmpne.w.f	200b			\n\t"
 +		"2:						\n\t"
-+			: "+a"(s), "+d"(c), "+d"(m), "+d"(n), "=a"(aligned_start)
++			: "+a" (s), "+d" (c), "+d" (m), "+d" (n), "=a" (aligned_start)
 +			:
 +			: "d15", "memory", "cc"
 +		);
@@ -2354,29 +2443,27 @@
 +	}
 +
 +	__asm__ volatile (
-+	"	call		%3, 99f			\n\t"	// load %3 with address of 99
-+	"99:	movei		d15, #%%lo(1f-99b)	\n\t"	// load d15 with offset to 1 from 99
-+	"	add.4		%3, %3, d15		\n\t"	// add difference
-+
 +	"	sub.4		d15, #0, %2		\n\t"
 +	"	jmpeq.w.f	2f			\n\t"
 +	"	and.4		d15, #(8-1), d15	\n\t"	// d15 = (-%2) & (16 - 1)
-+	"	lea.4		%3, (%3,d15)		\n\t"
-+	"	calli		%3, 0(%3)		\n\t"
++	"	call		%3, .+4			\n\t"
++	"	lea.4		%3, (%3,d15)		\n\t"	// 2 inst from here to 1f
++	"	calli		%3, 8(%3)		\n\t"
 +
 +	"1:	.rept		8			\n\t"
 +	"	move.1		(%0)1++, %1		\n\t"
 +	"	.endr					\n\t"
 +	"2:						\n\t"
 +
-+		: "+a"(s), "+d"(c), "+d"(n), "=a"(aligned_start)
++		: "+a" (s), "+d" (c), "+d" (n), "=a"(aligned_start)
 +		:
 +		: "d15", "memory", "cc"
 +	);
 +
 +	return s_ret;
 +}
-+libc_hidden_def(memset)
++libc_hidden_weak(memset)
++
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/Makefile
 @@ -0,0 +1,13 @@
@@ -2395,7 +2482,7 @@
 +include $(top_srcdir)Makerules
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/Makefile.arch
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,19 @@
 +# Makefile for uClibc
 +#
 +# Copyright (C) 2000-2006 Erik Andersen <andersen@uclibc.org>
@@ -2403,22 +2490,13 @@
 +# Licensed under the LGPL v2.1, see the file COPYING.LIB in this tarball.
 +#
 +
-+#CSRC := \
-+#	brk.c \
-+#	crtbegin.c \
-+#	crtend.c
-+#
-+#SSRC := \
-+#	__longjmp.S \
-+#	bsd-_setjmp.S \
-+#	bsd-setjmp.S \
-+#	setjmp.S \
-+#	clone.S \
-+#	vfork.S
-+
 +CSRC := \
 +	syscall.c __syscall_error.c
 +
++ifeq ($(ARCH_USE_MMU),y)
++      CSRC += brk.c
++endif
++ 
 +SSRC := \
 +	clone.S setjmp.S vfork.S
 +
@@ -2616,12 +2694,12 @@
 +#define O_ASYNC		 020000
 +
 +#ifdef __USE_GNU
-+# define O_DIRECTORY    040000 /* Must be a directory.	 */
-+# define O_NOFOLLOW    0100000 /* Do not follow links.	 */
-+# define O_DIRECT      0200000 /* Direct disk access.	*/
++# define O_DIRECTORY	 040000	/* Must be a directory.	 */
++# define O_NOFOLLOW	0100000	/* Do not follow links.	 */
++# define O_DIRECT	0200000	/* Direct disk access.	*/
 +# define O_NOATIME    01000000 /* Do not set atime.  */
-+# define O_CLOEXEC    02000000 /* set close_on_exec */
-+# define O_STREAMING  04000000 /* streaming access */
++# define O_CLOEXEC	02000000 /* set close_on_exec */
++# define O_STREAMING	04000000/* streaming access */
 +#endif
 +
 +/* For now Linux has synchronisity options for data and read operations.
@@ -2797,7 +2875,7 @@
 +__END_DECLS
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/bits/kernel_stat.h
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,52 @@
 +#ifndef _BITS_STAT_STRUCT_H
 +#define _BITS_STAT_STRUCT_H
 +
@@ -2805,8 +2883,8 @@
 +#error bits/kernel_stat.h is for internal uClibc use only!
 +#endif
 +
-+/* This file provides whatever this particular arch's kernel thinks
-+ * struct kernel_stat should look like...  It turns out each arch has a
++/* This file provides whatever this particular arch's kernel thinks 
++ * struct kernel_stat should look like...  It turns out each arch has a 
 + * different opinion on the subject... */
 +
 +struct kernel_stat {
@@ -2830,25 +2908,22 @@
 +};
 +
 +struct kernel_stat64 {
-+	unsigned char	__pad0[6];
-+	unsigned short	st_dev;
-+	unsigned char	__pad1[4];
++	unsigned long long	st_dev;
++	unsigned int		__pad1;
 +#define _HAVE_STAT64___ST_INO
 +	unsigned long	__st_ino;
 +	unsigned int	st_mode;
 +	unsigned int	st_nlink;
 +	unsigned long	st_uid;
 +	unsigned long	st_gid;
-+	unsigned char	__pad2[6];
-+	unsigned short	st_rdev;
-+	unsigned char	__pad3[4];
++	unsigned long long	st_rdev;
++	unsigned int	__pad2;
 +	long long	st_size;
 +	unsigned long	st_blksize;
-+	unsigned long	st_blocks;	/* Number 512-byte blocks allocated. */
-+	unsigned long	__pad4;		/* future possible st_blocks high bits */
-+	struct timespec	st_atim;
-+	struct timespec	st_mtim;
-+	struct timespec	st_ctim;
++	unsigned long long	st_blocks;	/* Number 512-byte blocks allocated. */
++	struct timespec st_atim;
++	struct timespec st_mtim;
++	struct timespec st_ctim;
 +	unsigned long long	st_ino;
 +};
 +
@@ -2857,8 +2932,8 @@
 +++ b/libc/sysdeps/linux/ubicom32/bits/kernel_types.h
 @@ -0,0 +1,44 @@
 +/* Note that we use the exact same include guard #define names
-+ * as asm/posix_types.h.  This will avoid gratuitous conflicts
-+ * with the posix_types.h kernel header, and will ensure that
++ * as asm/posix_types.h.  This will avoid gratuitous conflicts 
++ * with the posix_types.h kernel header, and will ensure that 
 + * our private content, and not the kernel header, will win.
 + *  -Erik
 + */
@@ -2902,7 +2977,7 @@
 +#endif /* __ARCH_UBICOM32_POSIX_TYPES_H */
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/bits/mman.h
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,104 @@
 +/* Definitions for POSIX memory map interface.  Linux/m68k version.
 +   Copyright (C) 1997, 2000, 2003, 2005 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -2961,14 +3036,15 @@
 +
 +/* These are Linux-specific.  */
 +#ifdef __USE_MISC
-+# define MAP_GROWSDOWN     0x0000100 /* Stack-like segment.  */
-+# define MAP_DENYWRITE     0x0000800 /* ETXTBSY */
-+# define MAP_EXECUTABLE    0x0001000 /* Mark it as an executable.  */
-+# define MAP_LOCKED        0x0002000 /* Lock the mapping.  */
-+# define MAP_NORESERVE     0x0004000 /* Don't check for reservations.  */
-+# define MAP_POPULATE      0x0008000 /* Populate (prefault) pagetables.  */
-+# define MAP_NONBLOCK      0x0010000 /* Do not block on IO.  */
-+# define MAP_UNINITIALIZE  0x4000000 /* For anonymous mmap, memory could be uninitialized. */
++# define MAP_GROWSDOWN	0x00100		/* Stack-like segment.  */
++# define MAP_DENYWRITE	0x00800		/* ETXTBSY */
++# define MAP_EXECUTABLE	0x01000		/* Mark it as an executable.  */
++# define MAP_LOCKED	0x02000		/* Lock the mapping.  */
++# define MAP_NORESERVE	0x04000		/* Don't check for reservations.  */
++# define MAP_POPULATE	0x08000		/* Populate (prefault) pagetables.  */
++# define MAP_NONBLOCK	0x10000		/* Do not block on IO.  */
++# define MAP_UNINITIALIZE 0x4000000     /* For anonymous mmap, memory could
++					   be uninitialized. */
 +#endif
 +
 +/* Flags to `msync'.  */
@@ -3036,7 +3112,7 @@
 +#endif
 +
 +#ifndef	_ASM
-+/*
++/* 
 + * This is the structure where we are going to save D10-D13, A0, A1, A2, A5, A6 and SP(A7).
 + * A5 is the return address. Call to setjmp will save these. Call to longjmp will return
 + * Control to the address in A5.
@@ -3094,7 +3170,7 @@
 +#endif	/* stackinfo.h */
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/bits/syscalls.h
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,150 @@
 +#ifndef _BITS_SYSCALLS_H
 +#define _BITS_SYSCALLS_H
 +#ifndef _SYSCALL_H
@@ -3108,11 +3184,30 @@
 +#undef __NR_iopl
 +#undef __NR_vm86
 +
-+#ifndef __ASSEMBLER__
++#include <config/autoconf.h>
++
++#if defined(__ASSEMBLER__)
++/*
++ * Define assembly macros to hide syscall call differences
++ */
++#if (UBICOM32_ARCH_VERSION >= 3) && (UBICOM32_ARCH_VERSION <= 4)
++.macro __syscall
++	moveai a5, #%hi(0x3FFC0030)
++	calli a5, 0x30(a5)
++.endm
++#elif (UBICOM32_ARCH_VERSION == 5)
++.macro __syscall
++	syscall a5
++.endm
++#else
++#error "UInknown Ubicom32 processor"
++#endif
++
++#else // C code
 +
 +#include <errno.h>
 +
-+/* Linux takes system call arguments in registers:
++/* Ubicom32 Linux takes system call arguments in registers:
 +
 +	syscall number	%d8
 +	arg 1		%d0
@@ -3123,46 +3218,57 @@
 +	arg 6		%d5
 +*/
 +
-+#define __loadargs_0(name, dummy)					      \
-+	d8 = (long int)name
++#define __loadargs_0(name, dummy)					\
++	d8 = name
 +
 +#define __loadargs_1(name, __arg1)					\
 +	__loadargs_0(name, 0);						\
-+	d0_retval = (long int) __arg1
++	d0_retval = (long int)(__arg1)
 +
-+#define __loadargs_2(name, __arg1, __arg2)    \
-+	__loadargs_1(name, __arg1);			   \
-+	d1 = (long int) __arg2
++#define __loadargs_2(name, __arg1, __arg2)				\
++	__loadargs_1(name, __arg1);					\
++	d1 = (long int)(__arg2)
 +
-+#define __loadargs_3(name, __arg1, __arg2, __arg3) \
-+	__loadargs_2(name, __arg1, __arg2); \
-+	d2 = (long int) __arg3
++#define __loadargs_3(name, __arg1, __arg2, __arg3)			\
++	__loadargs_2(name, __arg1, __arg2);				\
++	d2 = (long int)(__arg3)
 +
-+#define __loadargs_4(name, __arg1, __arg2, __arg3, __arg4)	\
-+	__loadargs_3(name, __arg1, __arg2, __arg3); \
-+	d3 = (long int)__arg4
++#define __loadargs_4(name, __arg1, __arg2, __arg3, __arg4)		\
++	__loadargs_3(name, __arg1, __arg2, __arg3);			\
++	d3 = (long int)(__arg4)
 +
-+#define __loadargs_5(name, __arg1, __arg2, __arg3, __arg4, __arg5) \
-+	__loadargs_4(name, __arg1, __arg2, __arg3, __arg4); \
-+	d4 = (long int)__arg5
++#define __loadargs_5(name, __arg1, __arg2, __arg3, __arg4, __arg5)	\
++	__loadargs_4(name, __arg1, __arg2, __arg3, __arg4);		\
++	d4 = (long int)(__arg5)
 +
 +#define __loadargs_6(name, __arg1, __arg2, __arg3, __arg4, __arg5, __arg6) \
-+	__loadargs_5(name, __arg1, __arg2, __arg3, __arg4, __arg5); \
-+	d5 = (long int)__arg6
++	__loadargs_5(name, __arg1, __arg2, __arg3, __arg4, __arg5);	\
++	d5 = (long int)(__arg6)
 +
-+#define INTERNAL_SYSCALL_NCS(name, err, nr, args...)			\
-+({									\
-+	register long int d0_retval  __asm__ ("d0");			\
-+	register long int d1  __asm__ ("d1");				\
-+	register long int d2  __asm__ ("d2");				\
-+	register long int d3  __asm__ ("d3");				\
-+	register long int d4  __asm__ ("d4");				\
-+	register long int d5  __asm__ ("d5");				\
-+	register long int d8  __asm__ ("d8");				\
++
++/*
++ * macro __INTERNAL_SYSCALL_BODY_NCS()
++ *
++ * Loads the nr args into the d0...d5 registers and set d8 to the syscall
++ * number.  calls to 0x404000010 which is the syscall entry point, being
++ * care-full to mark all the other registers as being clobbered (per default abi).
++ *
++ * The result from the syscall will be stored in d0_retval.
++ */
++#if (UBICOM32_ARCH_VERSION >= 3) && (UBICOM32_ARCH_VERSION <= 4)
++#define __INTERNAL_SYSCALL_BODY_NCS(name, nr, args...)			\
++	long int d0_copy;						\
++	register long int d0_retval __asm__ ("d0");			\
++	register long int d1 __asm__ ("d1");				\
++	register long int d2 __asm__ ("d2");				\
++	register long int d3 __asm__ ("d3");				\
++	register long int d4 __asm__ ("d4");				\
++	register long int d5 __asm__ ("d5");				\
++	register long int d8 __asm__ ("d8");				\
 +	__loadargs_##nr (name, args);					\
 +	__asm__ __volatile__ (						\
-+	"	moveai a5, #%%hi(0x40400000)\n\t"			\
-+	"	calli a5, 16(a5)\n\t"					\
++	"	moveai a5, #%%hi(0x3FFC0030)\n\t"			\
++	"	calli a5, 0x30(a5)\n\t"					\
 +		: "+r" (d0_retval), "+r" (d1), "+r" (d2), "+r" (d3),	\
 +		  "+r" (d4), "+r" (d5),  "+r" (d8) :			\
 +		: "cc", "memory",					\
@@ -3170,9 +3276,48 @@
 +		  "source3",						\
 +		  "a0", "a3", "a4", "a5",				\
 +		  "d6", "d7", "d9", "d14", "d15"			\
-+	);								\
-+	d0_retval;							\
-+})
++	);
++#elif (UBICOM32_ARCH_VERSION == 5)
++#define __INTERNAL_SYSCALL_BODY_NCS(name, nr, args...)			\
++	long int d0_copy;						\
++	register long int d0_retval __asm__ ("d0");			\
++	register long int d1 __asm__ ("d1");				\
++	register long int d2 __asm__ ("d2");				\
++	register long int d3 __asm__ ("d3");				\
++	register long int d4 __asm__ ("d4");				\
++	register long int d5 __asm__ ("d5");				\
++	register long int d8 __asm__ ("d8");				\
++	__loadargs_##nr (name, args);					\
++	__asm__ __volatile__ (						\
++	"	syscall a5	\n\t"					\
++		: "+r" (d0_retval), "+r" (d1), "+r" (d2), "+r" (d3),	\
++		  "+r" (d4), "+r" (d5),  "+r" (d8) :			\
++		: "cc", "memory",					\
++		  "acc0_lo", "acc0_hi", "acc1_lo", "acc1_hi",		\
++		  "source3",						\
++		  "a0", "a3", "a4", "a5",				\
++		  "d6", "d7", "d9", "d14", "d15"			\
++	);
++#else
++#error "Unknown Ubicom32 Processor"
++#endif
++
++#define INTERNAL_SYSCALL_NCS(name, err, nr, args...)			\
++	({								\
++		__INTERNAL_SYSCALL_BODY_NCS(name, nr, args);		\
++		d0_retval;						\
++	})
++
++#define INLINE_SYSCALL_NCS(name, nr, args...)				\
++	({								\
++		__INTERNAL_SYSCALL_BODY_NCS(name, nr, args);		\
++		if (unlikely((unsigned long)(d0_retval) >= (unsigned long)(-125))) { \
++			d0_copy = d0_retval;				\
++			__set_errno (-d0_copy);				\
++			d0_retval = -1L;				\
++		}							\
++		d0_retval;						\
++	})
 +
 +#endif /* __ASSEMBLER__ */
 +#endif /* _BITS_SYSCALLS_H */
@@ -3248,7 +3393,15 @@
 +#define __WORDSIZE	32
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/clone.S
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,80 @@
++/*
++ * libc/sysdeps/linux/ubicom32/clone.S -- 'clone' syscall for linux/ubicom32
++ *
++ * Copyright (C) 2009, Ubicom, Inc.
++ *
++ * Licensed under the LGPL v2.1, see the file COPYING.LIB in this tarball.
++ */
++
 +#include <sys/syscall.h>
 +
 +	.global __syscall_error
@@ -3260,61 +3413,62 @@
 +clone:
 +	/* Sanity check arguments.  */
 +	sub.4	#0, #0, d0	/* Test if fn is zero. */
-+	jmpeq.f 1f		/* arg bad */
++	jmpeq.f .Leinval	/* arg bad */
 +	sub.4	#0, #0, d1	/* Test if child_stack is zero. */
-+	jmpeq.f	1f		/* arg bad */
++	jmpeq.f	.Leinval	/* arg bad */
 +
-+	/* Set up child_stack frame.. arg and fn */
-+	move.4	a3, d1
-+	move.4	-4(a3)++, d3	/* push 'arg' to child stack */
-+	move.4	-4(a3)++, d0	/* push fn to child stack, this will become a5
-+				 * on new child */
-+	move.4	d1, a3
 +	move.4	-4(sp)++, a5	/* push a5 to our stack */
-+
++	move.4	-4(sp)++, a1	/* push a1 */
++	move.4	a1, d0		/* save fn in a1 */
 +	/*
 +	 * The syscall clone is clone(int flags, void *child_stack) so we set
 +	 * that up now
 +	 */
 +	move.4	d0, d2		/* Move flags to d0 */
++				/* child stack is already in d1 */
 +
 +	/* Do Clone syscall */
 +	movei	d8, #__NR_clone
-+	moveai	a5, #%hi(0x40400000)
-+	calli	a5, 0x10(a5)
-+	move.4	a5, (sp)4++	/* pop a5 from stack */
++	__syscall
 +
 +	/* Clone Complete */
 +	cmpi	d0, #0		/* Test if d0 is less than zero. If it is we
 +				 * return the error */
-+	jmplt.f	2f		/* If return is less than we had an error */
-+	jmpeq.f	3f		/* If return is 0 we are in the clone, jump to
++	jmpeq.f	.Lchild_thread	/* If return is 0 we are in the clone, jump to
 +				 * thread start */
++	move.4	a1, (sp)4++	/* pop a1 from stack */
++	move.4	a5, (sp)4++	/* pop a5 from stack */
++	jmplt.f	.Lerror		/* If return is less than we had an error */
 +	ret	a5		/* d0 is pid */
 +
 +	/* Invalid Value */
-+1:	movei   d0, #-22	/* EINVAL */
++.Leinval:
++	movei   d0, #-22	/* EINVAL */
 +
-+	/* Call syscall Error */
-+2:	sub.4	d0, #0, d0	/* d0 = -d0 */
++	/* Call syscall Error (it will return through a5) */
++.Lerror:
++	sub.4	d0, #0, d0	/* d0 = -d0 */
 +#if defined(__UBICOM32_FDPIC__)
 +	call	a3, __syscall_error
 +#else
 +	moveai	a3, #%hi(__syscall_error)
 +	calli	a3, %lo(__syscall_error)(a3)
 +#endif
++
 +	/* Child Thread Start */
-+3:
++.Lchild_thread:
++	move.4	d0, d3		/* copy 'arg' to d0 (this is because ubicom32
++				   syscall doesn't clobber d0-d5,d8 */
 +#if defined(__UBICOM32_FDPIC__)
 +	/* a5 actually contains a function descriptor for fdpic */
-+	move.4	a0, 4(a5)	/* set GOT for this function */
-+	move.4	a5, 0(a5)	/* get address of entry point */
-+#endif
-+	move.4	d0, (sp)4++	/* pop 'arg' to stack */
++	move.4	a0, 4(a1)	/* set GOT for this function */
++	move.4	a5, 0(a1)	/* get address of entry point */
 +	calli	a5, 0(a5)
++#else
++	calli	a5, 0(a1)
++#endif
 +	movei	d8, #__NR_exit
-+	moveai	a3, #%hi(0x40400000)
-+	calli	a3, 0x10(a3)
++	__syscall
 +
 +	.size clone, . - clone
 +	.global __GI_clone
@@ -3322,8 +3476,9 @@
 +	.set __GI_clone,clone
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/crt1.S
-@@ -0,0 +1,179 @@
-+/* Startup code compliant to the ELF m68k ABI.
+@@ -0,0 +1,193 @@
++/* Startup code compliant to the default ubicom32 ABI.
++   Copyright (C) 2009, Ubicom, Inc.
 +   Copyright (C) 1996, 1997, 1998, 2001, 2002 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
 +
@@ -3362,15 +3517,27 @@
 +#include <features.h>
 +
 +/* This is the canonical entry point, usually the first thing in the text
-+   segment.  The SVR4/m68k ABI says that when the entry point runs,
-+   most registers' values are unspecified, except for:
++   segment.  The SVR4/ubicom32 FD-PIC ABI says that when the entry point
++   runs, most registers' values are unspecified, except for:
 +
-+   %a1		Contains a function pointer to be registered with `atexit'.
-+		This is how the dynamic linker arranges to have DT_FINI
-+		functions called for shared libraries that have been loaded
-+		before this code runs.
++   The kernel leaves the main apps args on the stack (positive offsets), and
++   communicates the load maps as follows
 +
-+   %sp		The stack contains the arguments and environment:
++	d1 is set to the exec_map_addr (struct elf32_fdpic_loadmap *), which is the
++	current state of the mapped application.
++
++	d2 is set to interp_map_addr (struct elf32_fdpic_loadmap *), which is use
++	by ldso to relocate itself (not used when not using ld.so)
++
++	d3 is dynamic_addr which as far as I can tell is the stack pointer.
++
++	a1 is set to zero and will later be initialised to ldso _dl_fini
++	funcdesc if ld.so is involved.  When set, will contains a function
++	pointer to be registered with `atexit'.  This is how the dynamic linker
++	arranges to have DT_FINI functions called for shared libraries that have
++	been loaded before this code runs.
++
++   The stack contains the arguments and environment:
 +		0(%sp)			argc
 +		4(%sp)			argv[0]
 +		...
@@ -3379,8 +3546,8 @@
 +		...
 +					NULL
 +
-+   The uclinux conventions are different.  %a1 is not defined on entry
-+   and the stack is laid out as follows:
++   The uclinux FLAT format conventions are different.  d1, d2, d3 and a1 are not
++   defined on entry and the stack is laid out as follows:
 +
 +		0(%sp)			argc
 +		4(%sp)			argv
@@ -3403,7 +3570,7 @@
 +_start:
 +
 +#if defined(__UBICOM32_FDPIC__) && !defined(L_Scrt1)
-+	/* P0 contains a pointer to the program's load map.  */
++	/* d1 contains a pointer to the program's load map.  */
 +	call	a3, .Lcall;
 +.Lcall:
 +	move.4	d0, d1 ; load exec_map_addr
@@ -3446,14 +3613,15 @@
 +#endif
 +
 +	/*
-+	 * Grab the environment stuff from stack and set up d1, d2 with it.
++	 * Grab argc, argv[] from stack and set up d1, d2 with it.
++	 * Note that for FDPIC the calling convention and stack layout is
++	 * different than flat (see above)
 +	 */
-+	move.4	d1, (sp)
++	move.4	d1, (sp)	; argc
 +#ifdef __UBICOM32_FDPIC__
-+	/* For FDPIC the calling convention is different than flat */
-+	lea.1	d2, 4(sp)
++	lea.1	d2, 4(sp)	; argv = sp + 4
 +#else
-+	move.4	d2, 4(sp)
++	move.4	d2, 4(sp)	; argv = *(sp + 4)
 +#endif
 +
 +#ifdef __UCLIBC_CTOR_DTOR__
@@ -3504,34 +3672,35 @@
 +	bkpt #-1		; Crash if somehow `exit' does return.
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/crti.S
-@@ -0,0 +1,54 @@
-+/* Specialized code needed to support construction and destruction of
-+   file-scope objects in C++ and Java code, and to support exception handling.
-+   Copyright (C) 1999 Free Software Foundation, Inc.
-+   Contributed by Charles-Antoine Gauthier (charles.gauthier@iit.nrc.ca).
+@@ -0,0 +1,55 @@
++/*
++Copyright (C) 2009, Ubicom, Inc.
++Copyright (C) 2003, 2004 Free Software Foundation, Inc.
++This file is part of the GNU C Library.
 +
-+This file is part of GCC.
++The GNU C Library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public License as
++published by the Free Software Foundation; either version 2.1 of the
++License, or (at your option) any later version.
 +
-+GCC is free software; you can redistribute it and/or modify
-+it under the terms of the GNU General Public License as published by
-+the Free Software Foundation; either version 2, or (at your option)
-+any later version.
++In addition to the permissions in the GNU Lesser General Public
++License, the Free Software Foundation gives you unlimited
++permission to link the compiled version of this file with other
++programs, and to distribute those programs without any restriction
++coming from the use of this file.  (The GNU Lesser General Public
++License restrictions do apply in other respects; for example, they
++cover modification of the file, and distribution when not linked
++into another program.)
 +
-+GCC is distributed in the hope that it will be useful,
++The GNU C Library is distributed in the hope that it will be useful,
 +but WITHOUT ANY WARRANTY; without even the implied warranty of
-+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-+GNU General Public License for more details.
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Library General Public License for more details.
 +
-+You should have received a copy of the GNU General Public License
-+along with GCC; see the file COPYING.  If not, write to
-+the Free Software Foundation, 59 Temple Place - Suite 330,
-+Boston, MA 02111-1307, USA.  */
-+
-+/* As a special exception, if you link this library with files
-+   compiled with GCC to produce an executable, this does not cause
-+   the resulting executable to be covered by the GNU General Public License.
-+   This exception does not however invalidate any other reasons why
-+   the executable file might be covered by the GNU General Public License.  */
++You should have received a copy of the GNU Lesser General Public
++License along with the GNU C Library; see the file COPYING.LIB.  If
++not, write to the Free Software Foundation, Inc., 675 Mass Ave,
++Cambridge, MA 02139, USA.  */
 +
 +/*
 + * This file just supplies function prologues for the .init and .fini
@@ -3561,34 +3730,35 @@
 +#endif
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/crtn.S
-@@ -0,0 +1,47 @@
-+/* Specialized code needed to support construction and destruction of
-+   file-scope objects in C++ and Java code, and to support exception handling.
-+   Copyright (C) 1999 Free Software Foundation, Inc.
-+   Contributed by Charles-Antoine Gauthier (charles.gauthier@iit.nrc.ca).
+@@ -0,0 +1,52 @@
++/*
++Copyright (C) 2009, Ubicom, Inc.
++Copyright (C) 2003, 2004 Free Software Foundation, Inc.
++This file is part of the GNU C Library.
 +
-+This file is part of GCC.
++The GNU C Library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public License as
++published by the Free Software Foundation; either version 2.1 of the
++License, or (at your option) any later version.
 +
-+GCC is free software; you can redistribute it and/or modify
-+it under the terms of the GNU General Public License as published by
-+the Free Software Foundation; either version 2, or (at your option)
-+any later version.
++In addition to the permissions in the GNU Lesser General Public
++License, the Free Software Foundation gives you unlimited
++permission to link the compiled version of this file with other
++programs, and to distribute those programs without any restriction
++coming from the use of this file.  (The GNU Lesser General Public
++License restrictions do apply in other respects; for example, they
++cover modification of the file, and distribution when not linked
++into another program.)
 +
-+GCC is distributed in the hope that it will be useful,
++The GNU C Library is distributed in the hope that it will be useful,
 +but WITHOUT ANY WARRANTY; without even the implied warranty of
-+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-+GNU General Public License for more details.
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Library General Public License for more details.
 +
-+You should have received a copy of the GNU General Public License
-+along with GCC; see the file COPYING.  If not, write to
-+the Free Software Foundation, 59 Temple Place - Suite 330,
-+Boston, MA 02111-1307, USA.  */
-+
-+/* As a special exception, if you link this library with files
-+   compiled with GCC to produce an executable, this does not cause
-+   the resulting executable to be covered by the GNU General Public License.
-+   This exception does not however invalidate any other reasons why
-+   the executable file might be covered by the GNU General Public License.  */
++You should have received a copy of the GNU Lesser General Public
++License along with the GNU C Library; see the file COPYING.LIB.  If
++not, write to the Free Software Foundation, Inc., 675 Mass Ave,
++Cambridge, MA 02139, USA.  */
 +
 +/*
 + * This file supplies function epilogues for the .init and .fini sections.
@@ -3600,6 +3770,10 @@
 +
 +	.section .init
 +#ifdef __UBICOM32_FDPIC__
++	/*
++	 * Note: the ABI doesn't specify that we need to restore a0 but we do
++	 * need to restore the stack ptr.
++	 */
 +	move.4	a0, (sp)4++
 +#endif
 +	ret	(sp)4++
@@ -3759,34 +3933,53 @@
 +#endif /* __UBICOM32_FDPIC__ */
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/setjmp.S
-@@ -0,0 +1,72 @@
-+/* Setjmp for Ubicom32 */
+@@ -0,0 +1,101 @@
++/*
++ * libc/sysdeps/linux/ubicom32/setjmp.S -- setjmp/sigsetjmp/longjmp for linux/ubicom32
++ *
++ * Copyright (C) 2009, Ubicom, Inc.
++ *
++ * Licensed under the LGPL v2.1, see the file COPYING.LIB in this tarball.
++ */
++
++/*
++ * _setjmp() for Ubicom32
++ *	This just does a tail-call to `__sigsetjmp (ARG, 0)'.  We cannot
++ *	do it in C because it must be a tail-call, so frame-unwinding in
++ *	setjmp doesn't clobber the state restored by longjmp.
++ */
 +	.text
 +	.global _setjmp
 +	.type   _setjmp,@function
 +_setjmp:
-+	movea	a3, d0		; A3 now holds the jmp buf that was passed in.
-+	move.4	(a3)4++, d10
-+	move.4	(a3)4++, d11
-+	move.4	(a3)4++, d12
-+	move.4	(a3)4++, d13
-+	move.4  (a3)4++, a1
-+	move.4  (a3)4++, a2
-+	move.4  (a3)4++, a5
-+	move.4  (a3)4++, a6
-+	move.4  (a3)4++, a7
-+	move.4	d0, #0
-+
-+	calli	a5, 0(a5)
++	movei	d1, #0		/* savemask=0, don't save the mask */
++	jmpt.t	.L__sigsetjmp	/* don't use the public symbol as the
++				   link will jump through the plt */
 +	.size _setjmp, . - _setjmp
 +
 +/*
-+ * __sigsetjmp for Ubicom32
-+ *     d0 holds sigjmp_buf and d1 holds the savemask. We will save the frame and then just call __sigjmp_save to do the mask save.
++ * setjmp() for Ubicom32
++ *	This just does a tail-call to `__sigsetjmp (env, 1)'.  We cannot
++ *	do it in C because it must be a tail-call, so frame-unwinding in
++ *	setjmp doesn't clobber the state restored by longjmp.
++ */
++	.global setjmp
++	.type   setjmp,@function
++setjmp:
++	movei	d1, #1		/* savemask=1, to save the mask */
++	jmpt.t	.L__sigsetjmp	/* don't use the public symbol as the
++				   link will jump through the plt */
++	.size setjmp, . - setjmp
++
++/*
++ * __sigsetjmp() for Ubicom32
++ *     d0 holds sigjmp_buf and d1 holds the savemask. We will save the
++ *     frame and then just call __sigjmp_save to do the mask save.
 + */
 +	.global __sigsetjmp
 +	.type   __sigsetjmp,@function
 +__sigsetjmp:
++.L__sigsetjmp:			/* private version used by setjmp, _setjmp */
 +	movea	a3, d0		; A3 now holds the jmp buf that was passed in.
 +	move.4	(a3)4++, d10
 +	move.4	(a3)4++, d11
@@ -3798,15 +3991,21 @@
 +	move.4  (a3)4++, a6
 +	move.4  (a3)4++, a7
 +
-+	;; The frame has been saved. Call _sigjmp_save to get sigmask saved. a5 still has the return address and it will go back to that.
++	/*
++	 * The frame has been saved. Call _sigjmp_save to get sigmask saved. a5
++	 * still has the return address and it will go back to that.
++	 */
 +#if defined(__UBICOM32_FDPIC__)
 +	call	a3, __sigjmp_save
 +#else
 +	moveai	a3, #%hi(__sigjmp_save)
 +	calli	a3, %lo(__sigjmp_save)(a3)
 +#endif
-+	.size __sigjmp_save, . - __sigjmp_save
++	.size __sigsetjmp, . - __sigsetjmp
 +
++/*
++ * __longjmp() for Ubicom32
++ */
 +	.global	__longjmp
 +	.type   __longjmp,@function
 +__longjmp:
@@ -3821,7 +4020,11 @@
 +	move.4  a6 , (a3)4++
 +	move.4  a7 , (a3)4++
 +
-+	sub.4	#0, #0, d1	; Test if d1 is zero. If it is we have to return 1 other wise return content of d1
++	/*
++	 * Test if d1 is zero. If it is we have to return 1 other wise return
++	 * content of d1
++	 */
++	sub.4	#0, #0, d1
 +	jmpeq.t	2f
 +	move.4	d0, d1		; d1 is non zero load it into d0
 +	jmpt.t	3f
@@ -3959,7 +4162,7 @@
 +#endif	/* sys/procfs.h */
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/sys/ucontext.h
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,101 @@
 +/* Copyright (C) 1998, 1999 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
 +
@@ -3984,72 +4187,69 @@
 +#include <features.h>
 +#include <signal.h>
 +/*
-+ * Location of the users' stored registers relative to R0.
++ * Location of the users' stored registers relative to D0.
 + * Usage is as an index into a gregset_t array or as u.u_ar0[XX].
 + */
-+#define REG_PSR (0)
-+#define REG_PC  (1)
-+#define REG_SPARE   (2)
-+#define REG_WVALID  (3)
-+#define REG_G1  (4)
-+#define REG_G2  (5)
-+#define REG_G3  (6)
-+#define REG_G4  (7)
-+#define REG_G5  (8)
-+#define REG_G6  (9)
-+#define REG_G7  (10)
-+#define REG_O0  (11)
-+#define REG_O1  (12)
-+#define REG_O2  (13)
-+#define REG_O3  (14)
-+#define REG_O4  (15)
-+#define REG_O5  (16)
-+#define REG_O6  (17)
-+#define REG_O7  (18)
-+#define REG_GLOBALS (19)
++#define REG_D0           0
++#define REG_D1           1
++#define REG_D2           2
++#define REG_D3           3
++#define REG_D4           4
++#define REG_D5           5
++#define REG_D6           6
++#define REG_D7           7
++#define REG_D8           8
++#define REG_D9           9
++#define REG_D10          10
++#define REG_D11          11
++#define REG_D12          12
++#define REG_D13          13
++#define REG_D14          14
++#define REG_D15          15
++#define REG_A0           16
++#define REG_A1           17
++#define REG_A2           18
++#define REG_A3           19
++#define REG_A4           20
++#define REG_A5           21
++#define REG_A6           22
++#define REG_A7           23
++#define REG_SP           REG_A7
++#define REG_ACC0HI       24
++#define REG_ACC0LO       25
++#define REG_MAC_RC16     26
++#define REG_ACC1HI       27
++#define REG_ACC1LO       28
++#define REG_SOURCE3      29
++#define REG_INST_CNT     30
++#define REG_CSR          31
++#define REG_DUMMY_UNUSED 32
++#define REG_INT_MASK0    33
++#define REG_INT_MASK1    34
++#define REG_TRAP_CAUSE   35
++#define REG_PC           36
++#define REG_ORIGINAL_D0  37
++#define REG_FRAME_TYPE   38
++#define REG_PREVIOUS_PC  39 /* only usefull for debug */
++#define REG_NESTING_LEVEL 40
++#define REG_THREAD_TYPE  41
 +
 +/*
 + * A gregset_t is defined as an array type for compatibility with the reference
 + * source. This is important due to differences in the way the C language
 + * treats arrays and structures as parameters.
 + *
-+ * Note that NGREG is really (sizeof (struct regs) / sizeof (greg_t)),
-+ * but that the ABI defines it absolutely to be 21 (resp. 19).
++ * Note that NGREG is really (sizeof (struct pt_regs) / sizeof (greg_t))
 + */
 +
-+#define NGREG   20
++#define NGREG   42
 +typedef int greg_t;
 +
 +typedef greg_t  gregset_t[NGREG];
 +
-+/*
-+ * The following structures define how a register window can appear on the
-+ * stack. This structure is available (when required) through the `gwins'
-+ * field of an mcontext (nested within ucontext). NIOS_MAXWINDOW is the
-+ * maximum number of outstanding register windows defined in the NIOS
-+ * architecture (*not* implementation).
-+ */
-+#define NIOS_MAXREGWINDOW	31	/* max windows in NIOS arch. */
-+struct  rwindow
-+  {
-+    greg_t rw_local[8];			/* locals */
-+    greg_t rw_in[8];			/* ins */
-+  };
-+
-+#define rw_fp   rw_in[6]		/* frame pointer */
-+#define rw_rtn  rw_in[7]		/* return address */
-+
-+typedef struct gwindows
-+  {
-+    int            wbcnt;
-+    int           *spbuf[NIOS_MAXREGWINDOW];
-+    struct rwindow wbuf[NIOS_MAXREGWINDOW];
-+  } gwindows_t;
-+
 +typedef struct
 +  {
 +    gregset_t   gregs;		/* general register set */
-+    gwindows_t  *gwins;		/* POSSIBLE pointer to register windows */
 +  } mcontext_t;
 +
 +
@@ -4058,9 +4258,9 @@
 +  {
 +    unsigned long   uc_flags;
 +    struct ucontext *uc_link;
-+    __sigset_t	    uc_sigmask;
 +    stack_t         uc_stack;
 +    mcontext_t      uc_mcontext;
++    __sigset_t	    uc_sigmask;
 +  } ucontext_t;
 +
 +#endif /* sys/ucontext.h */
@@ -4070,7 +4270,7 @@
 +/* vi: set sw=4 ts=4: */
 +/* syscall for ubicom32/uClibc
 + *
-+ * Copyright (C) 2008 by Ubicom Inc.
++ * Copyright (C) 2008-2009 by Ubicom Inc.
 + * Copyright (C) 2002 by Erik Andersen <andersen@uclibc.org>
 + *
 + * This program is free software; you can redistribute it and/or modify it
@@ -4101,7 +4301,15 @@
 +}
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/vfork.S
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,43 @@
++/*
++ * libc/sysdeps/linux/ubicom32/vfork.S -- 'vfork' syscall for linux/ubicom32
++ *
++ * Copyright (C) 2009, Ubicom, Inc.
++ *
++ * Licensed under the LGPL v2.1, see the file COPYING.LIB in this tarball.
++ */
++
 +#include <sys/syscall.h>
 +
 +	.text
@@ -4110,18 +4318,18 @@
 +vfork:
 +	move.4	-4(sp)++, a5	; Save return address on the stack.
 +	movei	d8, #__NR_vfork
-+	moveai	a3, #%hi(0x40400000)
-+	calli	a5, 0x10(a3)
++	__syscall
 +
 +	/*
 +	 * You get here only if the syscall bombed. If things had worked out the
-+	 * parent and child would have both returned to the instruction after
-+	 * the vfork call.
++	 * parent and child would have both returned to the instruction just after
++	 * the call to this function.  See the implementation in 
++	 * arch/ubicom32/kernel/process.c.
 +	 */
 +	move.4	a5, (sp)4++	; Pop the return address off the stack.
-+	movei	d1, #-125
-+	sub.4	#0, d0, d1
-+	jmplt.t	1f
++;	movei	d1, #-125
++;	sub.4	#0, d0, d1
++;	jmplt.t	1f
 +
 +	;; We have an error.
 +	sub.4	d0, #0, d0	; d0 = -res. Call __set_errno with that.
@@ -4139,7 +4347,7 @@
 +	.set __GI_vfork,vfork
 --- a/libpthread/linuxthreads.old/pthread.c
 +++ b/libpthread/linuxthreads.old/pthread.c
-@@ -391,6 +391,10 @@ void __pthread_initialize_minimal(void)
+@@ -393,6 +393,10 @@ void __pthread_initialize_minimal(void)
  #endif
  
      __libc_multiple_threads_ptr = __libc_pthread_init (ptr_pthread_functions);
@@ -4150,13 +4358,17 @@
  }
  
  
-@@ -467,7 +471,8 @@ static void pthread_initialize(void)
-    * for a few more details.
+@@ -461,8 +465,11 @@ static void pthread_initialize(void)
+    * __pthread_initial_thread_bos at address 0. These bounds are refined as we
+    * malloc other stack frames such that they don't overlap. -StS
     */
-   __pthread_initial_thread_mid = CURRENT_STACK_FRAME;
--  __pthread_initial_thread_tos = (char *) -1;
-+  if (__pthread_initial_thread_tos == NULL)
-+    __pthread_initial_thread_tos = (char *) -1;
+-  __pthread_initial_thread_tos =
+-    (char *)(((long)CURRENT_STACK_FRAME + getpagesize()) & ~(getpagesize() - 1));
++  if (__pthread_initial_thread_tos == NULL) {
++    __pthread_initial_thread_tos =
++      (char *)(((long)CURRENT_STACK_FRAME + getpagesize()) & ~(getpagesize() - 1));
++  }
++
    __pthread_initial_thread_bos = (char *) 1; /* set it non-zero so we know we have been here */
    PDEBUG("initial thread stack bounds: bos=%p, tos=%p\n",
  	 __pthread_initial_thread_bos, __pthread_initial_thread_tos);
@@ -4216,7 +4428,7 @@
 +long int
 +testandset (int *spinlock)
 +{
-+	int ret;
++	int ret; 
 +	__asm__ volatile (
 +		"	move.4	%0, #0		\n\t" /* Assume that the bit is not currently set */
 +		"	bset	%1, %1, #0	\n\t" /* Attempt to 'set' bit 0 */
@@ -4256,10 +4468,70 @@
 +#ifndef _TLS_H
 +#define _TLS_H
 +#ifdef HAVE_TLS_SUPPORT
-+#warning no tls support
++#warning no tls support 
 +#undef USE_TLS
 +#endif
 +#endif	/* tls.h */
+--- /dev/null
++++ b/libc/sysdeps/linux/ubicom32/brk.c
+@@ -0,0 +1,43 @@
++/* brk system call for Linux/HPPA.
++   Copyright (C) 1995, 1996, 2000, 2001 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#include <errno.h>
++#include <sys/syscall.h>
++#include <unistd.h>
++
++/* This must be initialized data because commons can't have aliases.  */
++void *__curbrk attribute_hidden = 0;
++
++libc_hidden_proto(brk)
++int
++brk (void *addr)
++{
++  void *newbrk;
++
++  __curbrk = newbrk = (void *) syscall(__NR_brk, addr);
++
++  if (newbrk < addr)
++    {
++      __set_errno (ENOMEM);
++      return -1;
++    }
++
++  return 0;
++}
++libc_hidden_def(brk)
+--- a/utils/ldd.c
++++ b/utils/ldd.c
+@@ -101,6 +101,11 @@
+ #define ELFCLASSM	ELFCLASS64
+ #endif
+ 
++#if defined(__ubicom32__)
++#define MATCH_MACHINE(x) (x == EM_UBICOM32)
++#define ELFCLASSM	ELFCLASS32
++#endif
++
+ #ifndef MATCH_MACHINE
+ # ifdef __linux__
+ #  include <asm/elf.h>
 --- /dev/null
 +++ b/libc/sysdeps/linux/ubicom32/sys/user.h
 @@ -0,0 +1,40 @@
@@ -4303,3 +4575,225 @@
 +};
 +
 +#endif /* _SYS_USER_H */
+--- /dev/null
++++ b/libpthread/nptl/sysdeps/unix/sysv/linux/ubicom32/bits/pthreadtypes.h
+@@ -0,0 +1,181 @@
++/* Copyright (C) 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef _BITS_PTHREADTYPES_H
++#define _BITS_PTHREADTYPES_H	1
++
++#include <endian.h>
++
++#define __SIZEOF_PTHREAD_ATTR_T 36
++#define __SIZEOF_PTHREAD_MUTEX_T 24
++#define __SIZEOF_PTHREAD_MUTEXATTR_T 4
++#define __SIZEOF_PTHREAD_COND_T 48
++#define __SIZEOF_PTHREAD_COND_COMPAT_T 12
++#define __SIZEOF_PTHREAD_CONDATTR_T 4
++#define __SIZEOF_PTHREAD_RWLOCK_T 32
++#define __SIZEOF_PTHREAD_RWLOCKATTR_T 8
++#define __SIZEOF_PTHREAD_BARRIER_T 20
++#define __SIZEOF_PTHREAD_BARRIERATTR_T 4
++
++
++/* Thread identifiers.  The structure of the attribute type is not
++   exposed on purpose.  */
++typedef unsigned long int pthread_t;
++
++
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_ATTR_T];
++  long int __align;
++} pthread_attr_t;
++
++
++typedef struct __pthread_internal_slist
++{
++  struct __pthread_internal_slist *__next;
++} __pthread_slist_t;
++
++
++/* Data structures for mutex handling.  The structure of the attribute
++   type is not exposed on purpose.  */
++typedef union
++{
++  struct __pthread_mutex_s
++  {
++    int __lock;
++    unsigned int __count;
++    int __owner;
++    /* KIND must stay at this position in the structure to maintain
++       binary compatibility.  */
++    int __kind;
++    unsigned int __nusers;
++    __extension__ union
++    {
++      int __spins;
++      __pthread_slist_t __list;
++    };
++  } __data;
++  char __size[__SIZEOF_PTHREAD_MUTEX_T];
++  long int __align;
++} pthread_mutex_t;
++
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_MUTEXATTR_T];
++  long int __align;
++} pthread_mutexattr_t;
++
++
++/* Data structure for conditional variable handling.  The structure of
++   the attribute type is not exposed on purpose.  */
++typedef union
++{
++  struct
++  {
++    int __lock;
++    unsigned int __futex;
++    __extension__ unsigned long long int __total_seq;
++    __extension__ unsigned long long int __wakeup_seq;
++    __extension__ unsigned long long int __woken_seq;
++    void *__mutex;
++    unsigned int __nwaiters;
++    unsigned int __broadcast_seq;
++  } __data;
++  char __size[__SIZEOF_PTHREAD_COND_T];
++  __extension__ long long int __align;
++} pthread_cond_t;
++
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_CONDATTR_T];
++  long int __align;
++} pthread_condattr_t;
++
++
++/* Keys for thread-specific data */
++typedef unsigned int pthread_key_t;
++
++
++/* Once-only execution */
++typedef int pthread_once_t;
++
++
++#if defined __USE_UNIX98 || defined __USE_XOPEN2K
++/* Data structure for read-write lock variable handling.  The
++   structure of the attribute type is not exposed on purpose.  */
++typedef union
++{
++  struct
++  {
++    int __lock;
++    unsigned int __nr_readers;
++    unsigned int __readers_wakeup;
++    unsigned int __writer_wakeup;
++    unsigned int __nr_readers_queued;
++    unsigned int __nr_writers_queued;
++#if __BYTE_ORDER == __BIG_ENDIAN
++    unsigned char __pad1;
++    unsigned char __pad2;
++    unsigned char __shared;
++    /* FLAGS must stay at this position in the structure to maintain
++       binary compatibility.  */
++    unsigned char __flags;
++#else
++    /* FLAGS must stay at this position in the structure to maintain
++       binary compatibility.  */
++    unsigned char __flags;
++    unsigned char __shared;
++    unsigned char __pad1;
++    unsigned char __pad2;
++#endif
++    int __writer;
++  } __data;
++  char __size[__SIZEOF_PTHREAD_RWLOCK_T];
++  long int __align;
++} pthread_rwlock_t;
++
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_RWLOCKATTR_T];
++  long int __align;
++} pthread_rwlockattr_t;
++#endif
++
++
++#ifdef __USE_XOPEN2K
++/* POSIX spinlock data type.  */
++typedef volatile int pthread_spinlock_t;
++
++
++/* POSIX barriers data type.  The structure of the type is
++   deliberately not exposed.  */
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_BARRIER_T];
++  long int __align;
++} pthread_barrier_t;
++
++typedef union
++{
++  char __size[__SIZEOF_PTHREAD_BARRIERATTR_T];
++  int __align;
++} pthread_barrierattr_t;
++#endif
++
++
++#endif	/* bits/pthreadtypes.h */
+--- /dev/null
++++ b/libpthread/nptl/sysdeps/unix/sysv/linux/ubicom32/bits/semaphore.h
+@@ -0,0 +1,35 @@
++/* Copyright (C) 2002, 2005, 2007 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef _SEMAPHORE_H
++# error "Never use <bits/semaphore.h> directly; include <semaphore.h> instead."
++#endif
++
++
++#define __SIZEOF_SEM_T	16
++
++
++/* Value returned if `sem_open' failed.  */
++#define SEM_FAILED      ((sem_t *) 0)
++
++
++typedef union
++{
++  char __size[__SIZEOF_SEM_T];
++  long int __align;
++} sem_t;
