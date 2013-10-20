@@ -11,7 +11,7 @@ choice
 	config GCC_USE_VERSION_4_4_7
 		select GCC_VERSION_4_4_7
 		bool "gcc 4.4.7"
-		depends (avr32 || ubicom32)
+		depends on (avr32 || ubicom32)
 
 	config GCC_USE_VERSION_4_8_0
 		select GCC_VERSION_4_8_0
